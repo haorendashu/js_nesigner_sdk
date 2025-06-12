@@ -1,0 +1,28 @@
+{
+  "name": "js_nesigner_sdk",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^24.0.0",
+    "@types/w3c-web-serial": "^1.0.8",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "tsup": {
+    "clean": true,
+    "minify": false,
+    "sourcemap": true
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0"
+  }
+}

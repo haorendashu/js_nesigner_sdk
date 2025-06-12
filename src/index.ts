@@ -2,6 +2,7 @@
 
 import { NesignerInterface } from './nesigner_interface';
 import { MD5 } from 'crypto-js';
+import { HexUtil } from './hex_util';
 
 export enum MsgType {
     NOSTR_GET_PUBLIC_KEY = 1,
@@ -36,8 +37,11 @@ export async function getSerialPort(): Promise<SerialPort> {
 
 export async function createNesigner(port: SerialPort, pinCode: string): Promise<NesignerInterface> {
     class Nesigner implements NesignerInterface {
+        private pubkey?: string;
         private port: SerialPort;
         private aesKey: string;
+
+        private static readonly EMPTY_PUBKEY = "0000000000000000000000000000000000000000000000000000000000000000";
 
         constructor(port: SerialPort, pinCode: string) {
             this.port = port;
@@ -47,7 +51,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
         private messageCallbacks: Map<string, (response: {
             type: number;
-            messageId: Uint8Array;
             result: number;
             pubkey: string;
             data: Uint8Array;
@@ -59,33 +62,56 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             });
         }
 
+        async getPublicKey(): Promise<string | null> {
+            if (this.pubkey) {
+                return this.pubkey;
+            }
 
-        async getPublicKey(): Promise<string> {
-            // TODO: Implement communication with device to get public key
-            throw new Error('Not implemented');
+            const iv = crypto.getRandomValues(new Uint8Array(16));
+            let data = new Uint8Array([
+                ...iv
+            ]);
+            const response = await this.doRequest(
+                iv,
+                MsgType.NOSTR_GET_PUBLIC_KEY,
+                Nesigner.EMPTY_PUBKEY,
+                data,
+            );
+
+            if (response && response.result === MsgResult.OK) {
+                this.pubkey = HexUtil.bytesToHex(response.data);
+                return this.pubkey;
+            } else if (response && response.result === MsgResult.KEY_NOT_FOUND) {
+                // Key not found, retry
+                return null;
+            } else {
+                throw new Error('Failed to get public key');
+            }
+
+            return null;
         }
 
-        async encrypt(pubkey: string, plaintext: string): Promise<string> {
+        async encrypt(pubkey: string, plaintext: string): Promise<string | null> {
             // TODO: Implement encryption
             throw new Error('Not implemented');
         }
 
-        async decrypt(pubkey: string, ciphertext: string): Promise<string> {
+        async decrypt(pubkey: string, ciphertext: string): Promise<string | null> {
             // TODO: Implement decryption
             throw new Error('Not implemented');
         }
 
-        async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
+        async nip44Encrypt(pubkey: string, plaintext: string): Promise<string | null> {
             // TODO: Implement NIP-44 encryption
             throw new Error('Not implemented');
         }
 
-        async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
+        async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string | null> {
             // TODO: Implement NIP-44 decryption
             throw new Error('Not implemented');
         }
 
-        async signEvent(event: any): Promise<string> {
+        async signEvent(event: any): Promise<string | null> {
             // TODO: Implement event signing
             throw new Error('Not implemented');
         }
@@ -97,20 +123,23 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }
 
         private async doRequest(
+            iv: Uint8Array | null,
             messageType: number,
             pubkey: string,
-            data: Uint8Array) {
+            data: Uint8Array): Promise<{
+                type: number;
+                result: number;
+                pubkey: string;
+                data: Uint8Array;
+            }> {
             // Generate random 16-byte messageId
             const messageId = crypto.getRandomValues(new Uint8Array(16));
 
             return new Promise((resolve, reject) => {
-                const messageIdStr = Array.from(messageId)
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
-
+                const messageIdStr = HexUtil.bytesToHex(messageId);
                 this.messageCallbacks.set(messageIdStr, resolve);
 
-                this.sendMessage(messageId, messageType, pubkey, data)
+                this.sendMessage(messageId, iv, messageType, pubkey, data)
                     .catch(err => {
                         this.messageCallbacks.delete(messageIdStr);
                         reject(err);
@@ -120,12 +149,15 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
         private async sendMessage(
             messageId: Uint8Array,
+            iv: Uint8Array | null,
             messageType: number,
             pubkey: string,
             data: Uint8Array
         ): Promise<void> {
             // Generate random 16-byte IV
-            const iv = crypto.getRandomValues(new Uint8Array(16));
+            if (!iv) {
+                iv = crypto.getRandomValues(new Uint8Array(16));
+            }
 
             // Convert pubkey from hex to bytes (32 bytes)
             const pubkeyBytes = new Uint8Array(32);
@@ -315,21 +347,16 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 );
 
                 // Convert pubkey bytes to hex string
-                const pubkey = Array.from(pubkeyBytes)
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
+                const pubkey = HexUtil.bytesToHex(pubkeyBytes);
 
                 // Find and execute callback
-                const messageIdStr = Array.from(messageId)
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
+                const messageIdStr = HexUtil.bytesToHex(messageId);
                 const callback = this.messageCallbacks.get(messageIdStr);
 
                 if (callback) {
                     this.messageCallbacks.delete(messageIdStr);
                     callback({
                         type,
-                        messageId,
                         result,
                         pubkey,
                         data: new Uint8Array(decryptedData)

@@ -1,0 +1,105 @@
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+    <script type="module">
+        import { getSerialPort, createNesigner } from './dist/index.js';
+
+        window.connect = async function () {
+            try {
+                const port = await getSerialPort();
+                window.nesigner = await createNesigner(port, "12345678");
+                document.getElementById('getPublicKeyBtn').disabled = false;
+                document.getElementById('encryptBtn').disabled = false;
+                document.getElementById('decryptBtn').disabled = false;
+                document.getElementById('nip44EncryptBtn').disabled = false;
+                document.getElementById('nip44DecryptBtn').disabled = false;
+                document.getElementById('signBtn').disabled = false;
+                showResult('设备连接成功');
+            } catch (error) {
+                showResult('连接失败: ' + error.message);
+            }
+        }
+
+        window.getPublicKey = async function () {
+            try {
+                window.publicKey = await window.nesigner.getPublicKey();
+                showResult('公钥: ' + window.publicKey);
+            } catch (error) {
+                showResult('获取公钥失败: ' + error.message);
+            }
+        }
+
+        window.encrypt = async function () {
+            try {
+                window.tempText = await window.nesigner.encrypt(window.otherPubkey, window.tempText);
+                showResult('tempText: ' + window.tempText);
+            } catch (error) {
+                showResult('encrypt 失败: ' + error.message);
+            }
+        }
+
+        window.decrypt = async function () {
+            try {
+                window.tempText = await window.nesigner.decrypt(window.otherPubkey, window.tempText);
+                showResult('tempText: ' + window.tempText);
+            } catch (error) {
+                showResult('decrypt 失败: ' + error.message);
+            }
+        }
+
+        window.nip44Encrypt = async function () {
+            try {
+                window.tempText = await window.nesigner.nip44Encrypt(window.otherPubkey, window.tempText);
+                showResult('tempText: ' + window.tempText);
+            } catch (error) {
+                showResult('nip44Encrypt 失败: ' + error.message);
+            }
+        }
+
+        window.nip44Decrypt = async function () {
+            try {
+                window.tempText = await window.nesigner.nip44Decrypt(window.otherPubkey, window.tempText);
+                showResult('tempText: ' + window.tempText);
+            } catch (error) {
+                showResult('nip44Decrypt 失败: ' + error.message);
+            }
+        }
+
+        window.sign = async function () {
+            try {
+                var sig = await window.nesigner.sign("d3c79065562d9993dc4e7157d6323aaee79e670386a49a15a02f1eb8602d947a");
+                showResult('sig: ' + sig);
+            } catch (error) {
+                showResult('sign 失败: ' + error.message);
+            }
+        }
+
+        function showResult(message) {
+            document.getElementById('result').innerHTML = message;
+        }
+
+        window.publicKey = "";
+        window.otherPubkey = "1456e77bf02c6fe604879f61e6c7f772ceec3f9f0116aef3828377d447c5c291";
+        window.tempText = "Hello, World!";
+    </script>
+</head>
+
+<body>
+    <h1>Test Page</h1>
+    <div>
+        <button id="connectBtn" onclick="connect()">连接设备</button>
+        <button id="getPublicKeyBtn" disabled onclick="getPublicKey()">获取公钥</button>
+        <button id="encryptBtn" disabled onclick="encrypt()">加密</button>
+        <button id="decryptBtn" disabled onclick="decrypt()">解密</button>
+        <button id="nip44EncryptBtn" disabled onclick="nip44Encrypt()">NIP44加密</button>
+        <button id="nip44DecryptBtn" disabled onclick="nip44Decrypt()">NIP44解密</button>
+        <button id="signBtn" disabled onclick="sign()">签名</button>
+    </div>
+    <div id="result"></div>
+</body>
+
+</html>

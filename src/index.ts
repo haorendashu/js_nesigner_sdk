@@ -32,8 +32,20 @@ export enum MsgResult {
 }
 
 export async function getSerialPort(): Promise<SerialPort> {
-    const port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 });
+    const filters = [{
+        usbVendorId: 0x2323,
+        usbProductId: 0x3434,
+    }];
+
+    const port = await navigator.serial.requestPort({ filters });
+    await port.open({
+        baudRate: 115200,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 'none',
+        flowControl: 'none'
+    });
+    console.log("Serial port opened:", port.getInfo());
     return port;
 }
 
@@ -59,7 +71,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }) => void> = new Map();
 
         private startResponseReader() {
-            // console.log('Starting response reader...');
+            console.log('Starting response reader...');
             this.readResponse(null).catch(err => {
                 console.error('Error in response reader:', err);
             });
@@ -74,8 +86,8 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             let data = new Uint8Array([
                 ...iv
             ]);
-            // console.log("iv:", iv);
-            // console.log("data:", data);
+            console.log("iv:", iv);
+            console.log("data:", data);
             const response = await this.doRequest(
                 iv,
                 MsgType.NOSTR_GET_PUBLIC_KEY,
@@ -154,7 +166,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 const messageIdStr = HexUtil.bytesToHex(messageId);
                 this.messageCallbacks.set(messageIdStr, resolve);
 
-                // console.log(`Sending message with ID: ${messageIdStr}, Type: ${messageType}, Pubkey: ${pubkey}`);
+                console.log(`Sending message with ID: ${messageIdStr}, Type: ${messageType}, Pubkey: ${pubkey}`);
 
                 this.sendMessage(messageId, iv, messageType, pubkey, data)
                     .catch(err => {
@@ -227,6 +239,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
             try {
                 await writer.write(finalMessage);
+                console.log("write success");
             } finally {
                 writer.releaseLock();
             }
@@ -258,13 +271,13 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
                 // Read until we have complete header
                 while (headerOffset < headerBuffer.length) {
-                    // console.log(`Reading header: ${headerOffset}/${headerBuffer.length}`);
+                    console.log(`Reading header: ${headerOffset}/${headerBuffer.length}`);
                     const { value, done } = await reader.read();
                     if (done) {
                         throw new Error('Serial port closed while reading');
                     }
 
-                    // console.log(`Read ${value.length} bytes from serial port`);
+                    console.log(`Read ${value.length} bytes from serial port`);
 
                     const remaining = headerBuffer.length - headerOffset;
                     if (value.length <= remaining) {
@@ -287,8 +300,8 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 const dataLength = (headerBuffer[70] << 24) | (headerBuffer[71] << 16) |
                     (headerBuffer[72] << 8) | headerBuffer[73];
 
-                // console.log('result:', result);
-                // console.log('read dataLength:', dataLength);
+                console.log('result:', result);
+                console.log('read dataLength:', dataLength);
 
                 // Read encrypted data
                 const encryptedData = new Uint8Array(dataLength);

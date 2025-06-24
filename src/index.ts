@@ -392,6 +392,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                         existingData.slice(copyLength) :
                         null;
                 }
+                console.log("encryptedData0:", encryptedData);
 
                 // Read remaining encrypted data
                 while (dataOffset < dataLength) {
@@ -399,6 +400,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                     if (done) {
                         throw new Error('Serial port closed while reading data');
                     }
+                    console.log("value:", value);
 
                     const remaining = dataLength - dataOffset;
                     if (value.length <= remaining) {
@@ -421,6 +423,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                         throw new Error('CRC verification failed');
                     }
 
+                    console.log("encryptedData:", encryptedData);
                     decryptedData = await EncryptUtil.decrypt(this.aesKey, encryptedData, iv);
                 }
 

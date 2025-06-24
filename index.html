@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Test Page</title>
     <script type="module">
-        // import { getSerialPort, createNesigner } from './dist/index.js';
         import { getSerialPort, createNesigner } from './src/index.ts';
 
         window.connect = async function () {
@@ -82,19 +81,19 @@
 
         window.updateKey = async function () {
             try {
-                var sig = await window.nesigner.updateKey(window, pinCode, window.testPrivateKey);
-                showResult('sig: ' + sig);
+                var sig = await window.nesigner.updateKey(pinCode, window.testPrivateKey);
+                showResult('result: ' + sig);
             } catch (error) {
-                showResult('sign 失败: ' + error.message);
+                showResult('updateKey 失败: ' + error.message);
             }
         }
 
         window.removeKey = async function () {
             try {
                 var sig = await window.nesigner.removeKey(window.pinCode);
-                showResult('sig: ' + sig);
+                showResult('result: ' + sig);
             } catch (error) {
-                showResult('sign 失败: ' + error.message);
+                showResult('removeKey 失败: ' + error.message);
             }
         }
 

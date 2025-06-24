@@ -69,6 +69,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             type: number;
             result: number;
             pubkey: string;
+            iv: Uint8Array | null;
             data: Uint8Array | null;
         }) => void> = new Map();
 
@@ -98,8 +99,9 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 data,
             );
 
-            if (response && response.result === MsgResult.OK && response.data) {
-                this._pubkey = HexUtil.bytesToHex(response.data);
+            if (response && response.result === MsgResult.OK && response.data && response.iv) {
+                var dectypedData = await EncryptUtil.decrypt(this.aesKey,  response.data, response.iv);
+                this._pubkey = HexUtil.bytesToHex(dectypedData);
                 return this._pubkey;
             } else if (response && response.result === MsgResult.KEY_NOT_FOUND) {
                 // Key not found, retry
@@ -115,8 +117,9 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 ...new TextEncoder().encode(targetText) // UTF-8编码文本
             ]);
             var response = await this.doRequest(this.aesKey, null, msgType, this._pubkey as string, data);
-            if (response && response.result === MsgResult.OK && response.data) {
-                return utf8Decoder.decode(response.data);
+            if (response && response.result === MsgResult.OK && response.data && response.iv) {
+                var dectypedData = await EncryptUtil.decrypt(this.aesKey,  response.data, response.iv);
+                return utf8Decoder.decode(dectypedData);
             }
 
             return null;
@@ -140,8 +143,9 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
         async sign(eventId: string): Promise<string | null> {
             var response = await this.doRequest(this.aesKey, null, MsgType.NOSTR_SIGN_EVENT, this._pubkey as string, HexUtil.hexToBytes(eventId));
-            if (response && response.result === MsgResult.OK && response.data) {
-                return HexUtil.bytesToHex(response.data);
+            if (response && response.result === MsgResult.OK && response.data && response.iv) {
+                var dectypedData = await EncryptUtil.decrypt(this.aesKey,  response.data, response.iv);
+                return HexUtil.bytesToHex(dectypedData);
             }
             return null;
         }
@@ -170,6 +174,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             if (!tempPubkey) {
                 return MsgResult.FAIL;
             }
+            console.log("tempPubkey:", tempPubkey);
 
             var sourceData = key + HexUtil.bytesToHex(aesKey);
             var sharedSecret = getConversationKey(privateKey, tempPubkey);
@@ -224,6 +229,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 type: number;
                 result: number;
                 pubkey: string;
+                iv: Uint8Array | null;
                 data: Uint8Array | null;
             }> {
             // Generate random 16-byte messageId
@@ -258,10 +264,16 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
             const pubkeyBytes = HexUtil.hexToBytes(pubkey);
             var encryptedData = new Uint8Array(0);
-            if (aesKey != null && data != null) {
-                const tempEncryptedData = await EncryptUtil.encrypt(aesKey, data, iv);
-                encryptedData = new Uint8Array(tempEncryptedData);
+            var dataLength = 0;
+            if (data != null) {
+                if (aesKey != null) {
+                    const tempEncryptedData = await EncryptUtil.encrypt(aesKey, data, iv);
+                    encryptedData = new Uint8Array(tempEncryptedData);
+                } else {
+                    encryptedData = new Uint8Array(data);
+                }
             }
+            dataLength = encryptedData.byteLength;
 
             // Prepare message structure
             const messageTypeBytes = new Uint8Array(2);
@@ -269,7 +281,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             messageTypeBytes[1] = messageType & 0xFF;
 
             const lengthBytes = new Uint8Array(4);
-            const dataLength = encryptedData.byteLength;
             lengthBytes[0] = (dataLength >> 24) & 0xFF;
             lengthBytes[1] = (dataLength >> 16) & 0xFF;
             lengthBytes[2] = (dataLength >> 8) & 0xFF;
@@ -392,7 +403,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                         existingData.slice(copyLength) :
                         null;
                 }
-                console.log("encryptedData0:", encryptedData);
 
                 // Read remaining encrypted data
                 while (dataOffset < dataLength) {
@@ -400,7 +410,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                     if (done) {
                         throw new Error('Serial port closed while reading data');
                     }
-                    console.log("value:", value);
 
                     const remaining = dataLength - dataOffset;
                     if (value.length <= remaining) {
@@ -414,7 +423,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                     }
                 }
 
-                let decryptedData: Uint8Array | null = null;
                 if (dataLength > 0) {
                     // Verify CRC
                     const crcData = encryptedData;
@@ -422,9 +430,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                     if (calculatedCrc !== crc) {
                         throw new Error('CRC verification failed');
                     }
-
-                    console.log("encryptedData:", encryptedData);
-                    decryptedData = await EncryptUtil.decrypt(this.aesKey, encryptedData, iv);
                 }
 
                 // Convert pubkey bytes to hex string
@@ -440,7 +445,8 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                         type,
                         result,
                         pubkey,
-                        data: decryptedData ? decryptedData : null
+                        iv,
+                        data: encryptedData,
                     });
                 }
 

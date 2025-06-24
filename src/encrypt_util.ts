@@ -1,65 +1,57 @@
+import { cbc } from '@noble/ciphers/aes';
 
 export class EncryptUtil {
-
     static blockSize = 16;
 
-    private static arrayToWordArray(arr: Uint8Array): CryptoJS.lib.WordArray {
-        // 直接将 Uint8Array 转换为 WordArray
-        return CryptoJS.lib.WordArray.create(arr);
+    /**
+     * 使用 PKCS7 算法对数据进行填充
+     * @param data 需要填充的数据
+     * @param blockSize 块大小
+     * @returns 填充后的数据
+     */
+    private static pkcs7Pad(data: Uint8Array, blockSize: number): Uint8Array {
+        const paddingLength = blockSize - (data.length % blockSize);
+        const padding = new Uint8Array(paddingLength).fill(paddingLength);
+        const paddedData = new Uint8Array(data.length + paddingLength);
+        paddedData.set(data);
+        paddedData.set(padding, data.length);
+        return paddedData;
     }
 
-    private static wordArrayToUint8Array(wordArray: CryptoJS.lib.WordArray): Uint8Array {
-        // 转换 WordArray 为 Uint8Array
-        const words = wordArray.words;
-        const sigBytes = wordArray.sigBytes;
-        const u8 = new Uint8Array(sigBytes);
-        let offset = 0;
-        for (let i = 0; i < words.length && offset < sigBytes; i++) {
-            const word = words[i];
-            u8[offset++] = (word >>> 24) & 0xff;
-            if (offset < sigBytes) u8[offset++] = (word >>> 16) & 0xff;
-            if (offset < sigBytes) u8[offset++] = (word >>> 8) & 0xff;
-            if (offset < sigBytes) u8[offset++] = word & 0xff;
+    /**
+     * 使用 PKCS7 算法去除数据的填充
+     * @param data 需要去除填充的数据
+     * @param blockSize 块大小
+     * @returns 去除填充后的数据
+     */
+    private static pkcs7Unpad(data: Uint8Array, blockSize: number): Uint8Array {
+        const paddingLength = data[data.length - 1];
+        if (paddingLength > blockSize || paddingLength === 0) {
+            throw new Error('Invalid PKCS7 padding');
         }
-        return u8;
+        for (let i = 0; i < paddingLength; i++) {
+            if (data[data.length - 1 - i] !== paddingLength) {
+                throw new Error('Invalid PKCS7 padding');
+            }
+        }
+        return data.subarray(0, data.length - paddingLength);
     }
 
     static async encrypt(aesKey: Uint8Array, data: Uint8Array, iv: Uint8Array): Promise<Uint8Array> {
-        // 直接使用 Uint8Array 创建 WordArray
-        const keyWordArray = this.arrayToWordArray(aesKey);
-        const ivWordArray = this.arrayToWordArray(iv);
-        const dataWordArray = this.arrayToWordArray(data);
-
+        // 使用 PKCS7 填充数据
+        const paddedData = this.pkcs7Pad(data, this.blockSize);
+        // 创建 CBC 模式的 AES 加密器
+        const aesCbc = cbc(aesKey, iv);
         // 执行加密
-        const encrypted = CryptoJS.AES.encrypt(dataWordArray, keyWordArray, {
-            iv: ivWordArray,
-            padding: CryptoJS.pad.Pkcs7,
-            mode: CryptoJS.mode.CBC
-        });
-
-        // 返回加密后的数据
-        return this.wordArrayToUint8Array(encrypted.ciphertext);
+        return aesCbc.encrypt(paddedData);
     }
 
     static async decrypt(aesKey: Uint8Array, data: Uint8Array, iv: Uint8Array): Promise<Uint8Array> {
-        // 直接使用 Uint8Array 创建 WordArray
-        const keyWordArray = this.arrayToWordArray(aesKey);
-        const ivWordArray = this.arrayToWordArray(iv);
-        const encryptedWordArray = this.arrayToWordArray(data);
-
-        // 创建 CipherParams
-        const cipherParams = CryptoJS.lib.CipherParams.create({
-            ciphertext: encryptedWordArray
-        });
-
+        // 创建 CBC 模式的 AES 解密器
+        const aesCbc = cbc(aesKey, iv);
         // 执行解密
-        const decrypted = CryptoJS.AES.decrypt(cipherParams, keyWordArray, {
-            iv: ivWordArray,
-            padding: CryptoJS.pad.Pkcs7,
-            mode: CryptoJS.mode.CBC
-        });
-
-        // 返回解密后的数据
-        return this.wordArrayToUint8Array(decrypted);
+        const decryptedData = aesCbc.decrypt(data);
+        // 使用 PKCS7 去除填充
+        return this.pkcs7Unpad(decryptedData, this.blockSize);
     }
 }

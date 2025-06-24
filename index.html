@@ -4,20 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Test Page</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script type="module">
         import { getSerialPort, createNesigner } from './dist/index.js';
 
         window.connect = async function () {
             try {
                 const port = await getSerialPort();
-                window.nesigner = await createNesigner(port, "12345678");
+                window.nesigner = await createNesigner(port, window.pinCode);
                 document.getElementById('getPublicKeyBtn').disabled = false;
                 document.getElementById('encryptBtn').disabled = false;
                 document.getElementById('decryptBtn').disabled = false;
                 document.getElementById('nip44EncryptBtn').disabled = false;
                 document.getElementById('nip44DecryptBtn').disabled = false;
                 document.getElementById('signBtn').disabled = false;
+                document.getElementById('updateKeyBtn').disabled = false;
+                document.getElementById('removeKeyBtn').disabled = false;
                 showResult('设备连接成功');
             } catch (error) {
                 showResult('连接失败: ' + error.message);
@@ -78,6 +79,24 @@
             }
         }
 
+        window.updateKey = async function () {
+            try {
+                var sig = await window.nesigner.updateKey(window, pinCode, window.testPrivateKey);
+                showResult('sig: ' + sig);
+            } catch (error) {
+                showResult('sign 失败: ' + error.message);
+            }
+        }
+
+        window.removeKey = async function () {
+            try {
+                var sig = await window.nesigner.removeKey(window.pinCode);
+                showResult('sig: ' + sig);
+            } catch (error) {
+                showResult('sign 失败: ' + error.message);
+            }
+        }
+
         function showResult(message) {
             document.getElementById('result').innerHTML = message;
         }
@@ -85,6 +104,8 @@
         window.publicKey = "";
         window.otherPubkey = "1456e77bf02c6fe604879f61e6c7f772ceec3f9f0116aef3828377d447c5c291";
         window.tempText = "Hello, World!";
+        window.pinCode = "12345678";
+        window.testPrivateKey = "d29ec99c3cc9f8bb0e4a47a32c13d170c286a245a4946ef84453dee14d5ece4b";
     </script>
 </head>
 
@@ -98,6 +119,8 @@
         <button id="nip44EncryptBtn" disabled onclick="nip44Encrypt()">NIP44加密</button>
         <button id="nip44DecryptBtn" disabled onclick="nip44Decrypt()">NIP44解密</button>
         <button id="signBtn" disabled onclick="sign()">签名</button>
+        <button id="updateKeyBtn" disabled onclick="updateKey()">绑定Key</button>
+        <button id="removeKeyBtn" disabled onclick="removeKey()">删除Key</button>
     </div>
     <div id="result"></div>
 </body>

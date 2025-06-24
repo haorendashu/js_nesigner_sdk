@@ -1,10 +1,9 @@
 {
     "compilerOptions": {
-        "target": "ESNext",
+        "target": "ES2020", // 调整为更兼容的版本
         "module": "ESNext",
         "lib": [
-            "ESNext",
-            "ES2015",
+            "ES2020",
             "DOM"
         ],
         "outDir": "./dist",
@@ -16,21 +15,19 @@
         "declaration": true,
         "declarationMap": true,
         "sourceMap": true,
-        "moduleResolution": "node"
+        "moduleResolution": "bundler", // 浏览器友好的模块解析方式
+        "types": [
+            "w3c-web-serial"
+        ],
+        "downlevelIteration": true, // 确保迭代器兼容旧浏览器
+        "useDefineForClassFields": false // 避免类字段的兼容性问题
     },
     "include": [
-        "src/**/*.ts"
+        "src/**/*.ts",
+        "types/**/*.d.ts" // 添加自定义类型目录
     ],
     "exclude": [
         "node_modules",
         "dist"
-    ],
-    "tsup": {
-        "clean": true,
-        "minify": false,
-        "sourcemap": true,
-        "format": [
-            "esm"
-        ]
-    }
+    ]
 }

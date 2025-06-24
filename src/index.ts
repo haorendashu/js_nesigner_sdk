@@ -1,10 +1,12 @@
 /// <reference lib="dom" />
-declare const CryptoJS: any;
 
 import { NesignerInterface } from './nesigner_interface';
-// import { MD5 } from 'crypto-js';
 import { HexUtil } from './hex_util';
 import { EncryptUtil } from './encrypt_util';
+import { getConversationKey, encrypt as nip44Encrypt, utf8Decoder, utf8Encoder } from './nip44';
+import { schnorr } from '@noble/curves/secp256k1';
+import { randomBytes } from '@noble/hashes/utils';
+import { Md5 } from 'ts-md5';
 
 export enum MsgType {
     NOSTR_GET_PUBLIC_KEY = 1,
@@ -59,7 +61,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
         constructor(port: SerialPort, pinCode: string) {
             this.port = port;
-            this.aesKey = HexUtil.hexToBytes(CryptoJS.MD5(pinCode).toString());
+            this.aesKey = this.getAesKey(pinCode);
             this.startResponseReader();
         }
 
@@ -82,13 +84,14 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 return this._pubkey;
             }
 
-            const iv = crypto.getRandomValues(new Uint8Array(16));
+            const iv = randomBytes(16);
             let data = new Uint8Array([
                 ...iv
             ]);
-            console.log("iv:", iv);
-            console.log("data:", data);
+            // console.log("iv:", iv);
+            // console.log("data:", data);
             const response = await this.doRequest(
+                this.aesKey,
                 iv,
                 MsgType.NOSTR_GET_PUBLIC_KEY,
                 Nesigner.EMPTY_PUBKEY,
@@ -111,9 +114,9 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 ...HexUtil.hexToBytes(pubkey),         // 转换16进制字符串为字节数组
                 ...new TextEncoder().encode(targetText) // UTF-8编码文本
             ]);
-            var response = await this.doRequest(null, msgType, this._pubkey as string, data);
+            var response = await this.doRequest(this.aesKey, null, msgType, this._pubkey as string, data);
             if (response && response.result === MsgResult.OK && response.data) {
-                return new TextDecoder().decode(response.data);
+                return utf8Decoder.decode(response.data);
             }
 
             return null;
@@ -136,11 +139,74 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }
 
         async sign(eventId: string): Promise<string | null> {
-            var response = await this.doRequest(null, MsgType.NOSTR_SIGN_EVENT, this._pubkey as string, HexUtil.hexToBytes(eventId));
+            var response = await this.doRequest(this.aesKey, null, MsgType.NOSTR_SIGN_EVENT, this._pubkey as string, HexUtil.hexToBytes(eventId));
             if (response && response.result === MsgResult.OK && response.data) {
                 return HexUtil.bytesToHex(response.data);
             }
             return null;
+        }
+
+        async getTempPubkey(): Promise<string | null> {
+            const response = await this.doRequest(
+                null,
+                null,
+                MsgType.GET_TEMP_PUBKEY,
+                Nesigner.EMPTY_PUBKEY,
+                null,
+            );
+
+            if (response && response.result === MsgResult.OK && response.data) {
+                return HexUtil.bytesToHex(response.data);
+            }
+
+            return null;
+        }
+
+        async updateKey(pinCode: string, key: string): Promise<number> {
+            var aesKey = this.getAesKey(pinCode);
+            var privateKey = HexUtil.hexToBytes(key);
+            var currentPubkey = this.getPublicKeyFromKey(privateKey);
+            var tempPubkey = await this.getTempPubkey();
+            if (!tempPubkey) {
+                return MsgResult.FAIL;
+            }
+
+            var sourceData = key + HexUtil.bytesToHex(aesKey);
+            var sharedSecret = getConversationKey(privateKey, tempPubkey);
+            var encryptedText = await nip44Encrypt(sourceData, sharedSecret);
+
+            const response = await this.doRequest(
+                null,
+                null,
+                MsgType.UPDATE_KEY,
+                currentPubkey,
+                utf8Encoder.encode(encryptedText),
+            );
+            if (response) {
+                return response.result;
+            }
+
+            return MsgResult.FAIL;
+        }
+
+        async removeKey(pinCode: string): Promise<number> {
+            var aesKey = this.getAesKey(pinCode);
+            const iv = randomBytes(16);
+            let data = new Uint8Array([
+                ...iv
+            ]);
+            const response = await this.doRequest(
+                aesKey,
+                iv,
+                MsgType.REMOVE_KEY,
+                Nesigner.EMPTY_PUBKEY,
+                data,
+            );
+            if (response) {
+                return response.result;
+            }
+
+            return MsgResult.FAIL;
         }
 
         async close(): Promise<void> {
@@ -150,17 +216,18 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }
 
         private async doRequest(
+            aesKey: Uint8Array | null,
             iv: Uint8Array | null,
             messageType: number,
             pubkey: string,
-            data: Uint8Array): Promise<{
+            data: Uint8Array | null): Promise<{
                 type: number;
                 result: number;
                 pubkey: string;
                 data: Uint8Array | null;
             }> {
             // Generate random 16-byte messageId
-            const messageId = crypto.getRandomValues(new Uint8Array(16));
+            const messageId = randomBytes(16);
 
             return new Promise((resolve, reject) => {
                 const messageIdStr = HexUtil.bytesToHex(messageId);
@@ -168,7 +235,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
                 console.log(`Sending message with ID: ${messageIdStr}, Type: ${messageType}, Pubkey: ${pubkey}`);
 
-                this.sendMessage(messageId, iv, messageType, pubkey, data)
+                this.sendMessage(aesKey, messageId, iv, messageType, pubkey, data)
                     .catch(err => {
                         this.messageCallbacks.delete(messageIdStr);
                         reject(err);
@@ -177,19 +244,24 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }
 
         private async sendMessage(
+            aesKey: Uint8Array | null,
             messageId: Uint8Array,
             iv: Uint8Array | null,
             messageType: number,
             pubkey: string,
-            data: Uint8Array
+            data: Uint8Array | null
         ): Promise<void> {
             // Generate random 16-byte IV
             if (!iv) {
-                iv = crypto.getRandomValues(new Uint8Array(16));
+                iv = randomBytes(16);
             }
 
             const pubkeyBytes = HexUtil.hexToBytes(pubkey);
-            const encryptedData = await EncryptUtil.encrypt(this.aesKey, data, iv);
+            var encryptedData = new Uint8Array(0);
+            if (aesKey != null && data != null) {
+                const tempEncryptedData = await EncryptUtil.encrypt(aesKey, data, iv);
+                encryptedData = new Uint8Array(tempEncryptedData);
+            }
 
             // Prepare message structure
             const messageTypeBytes = new Uint8Array(2);
@@ -225,11 +297,13 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             }
 
             // Calculate CRC16 (excluding CRC field itself)
-            const crc = this.calculateCRC16(
-                encryptedData
-            );
-            finalMessage[66] = (crc >> 8) & 0xFF;
-            finalMessage[67] = crc & 0xFF;
+            if (encryptedData.byteLength > 0) {
+                const crc = this.calculateCRC16(
+                    encryptedData
+                );
+                finalMessage[66] = (crc >> 8) & 0xFF;
+                finalMessage[67] = crc & 0xFF;
+            }
 
             // Send to serial port
             const writer = this.port.writable?.getWriter();
@@ -391,6 +465,14 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 }
             }
             return crc;
+        }
+
+        private getAesKey(pinCode: string): Uint8Array {
+            return HexUtil.hexToBytes(Md5.hashStr(pinCode));
+        }
+
+        private getPublicKeyFromKey(key: Uint8Array): string {
+            return HexUtil.bytesToHex(schnorr.getPublicKey(key))
         }
     }
 

@@ -19,18 +19,20 @@
                 document.getElementById('signBtn').disabled = false;
                 document.getElementById('updateKeyBtn').disabled = false;
                 document.getElementById('removeKeyBtn').disabled = false;
-                showResult('设备连接成功');
+                document.getElementById('pingBtn').disabled = false;
+                document.getElementById('echoBtn').disabled = false;
+                showResult('Device connected.');
             } catch (error) {
-                showResult('连接失败: ' + error.message);
+                showResult('Connect fail: ' + error.message);
             }
         }
 
         window.getPublicKey = async function () {
             try {
                 window.publicKey = await window.nesigner.getPublicKey();
-                showResult('公钥: ' + window.publicKey);
+                showResult('Pubkey: ' + window.publicKey);
             } catch (error) {
-                showResult('获取公钥失败: ' + error.message);
+                showResult('getPublicKey fail: ' + error.message);
             }
         }
 
@@ -39,7 +41,7 @@
                 window.tempText = await window.nesigner.encrypt(window.otherPubkey, window.tempText);
                 showResult('tempText: ' + window.tempText);
             } catch (error) {
-                showResult('encrypt 失败: ' + error.message);
+                showResult('encrypt fail: ' + error.message);
             }
         }
 
@@ -48,7 +50,7 @@
                 window.tempText = await window.nesigner.decrypt(window.otherPubkey, window.tempText);
                 showResult('tempText: ' + window.tempText);
             } catch (error) {
-                showResult('decrypt 失败: ' + error.message);
+                showResult('decrypt fail: ' + error.message);
             }
         }
 
@@ -57,7 +59,7 @@
                 window.tempText = await window.nesigner.nip44Encrypt(window.otherPubkey, window.tempText);
                 showResult('tempText: ' + window.tempText);
             } catch (error) {
-                showResult('nip44Encrypt 失败: ' + error.message);
+                showResult('nip44Encrypt fail: ' + error.message);
             }
         }
 
@@ -66,7 +68,7 @@
                 window.tempText = await window.nesigner.nip44Decrypt(window.otherPubkey, window.tempText);
                 showResult('tempText: ' + window.tempText);
             } catch (error) {
-                showResult('nip44Decrypt 失败: ' + error.message);
+                showResult('nip44Decrypt fail: ' + error.message);
             }
         }
 
@@ -75,7 +77,7 @@
                 var sig = await window.nesigner.sign("d3c79065562d9993dc4e7157d6323aaee79e670386a49a15a02f1eb8602d947a");
                 showResult('sig: ' + sig);
             } catch (error) {
-                showResult('sign 失败: ' + error.message);
+                showResult('sign fail: ' + error.message);
             }
         }
 
@@ -84,7 +86,7 @@
                 var sig = await window.nesigner.updateKey(pinCode, window.testPrivateKey);
                 showResult('result: ' + sig);
             } catch (error) {
-                showResult('updateKey 失败: ' + error.message);
+                showResult('updateKey fail: ' + error.message);
             }
         }
 
@@ -93,7 +95,25 @@
                 var sig = await window.nesigner.removeKey(window.pinCode);
                 showResult('result: ' + sig);
             } catch (error) {
-                showResult('removeKey 失败: ' + error.message);
+                showResult('removeKey fail: ' + error.message);
+            }
+        }
+
+        window.ping = async function () {
+            try {
+                var time = await window.nesigner.ping();
+                showResult('ping Time: ' + time);
+            } catch (error) {
+                showResult('ping fail: ' + error.message);
+            }
+        }
+
+        window.echo = async function () {
+            try {
+                var echoContent = await window.nesigner.echo(window.pinCode, "This is echo content.");
+                showResult('result: ' + echoContent);
+            } catch (error) {
+                showResult('echo fail: ' + error.message);
             }
         }
 
@@ -112,15 +132,17 @@
 <body>
     <h1>Test Page</h1>
     <div>
-        <button id="connectBtn" onclick="connect()">连接设备</button>
-        <button id="getPublicKeyBtn" disabled onclick="getPublicKey()">获取公钥</button>
-        <button id="encryptBtn" disabled onclick="encrypt()">加密</button>
-        <button id="decryptBtn" disabled onclick="decrypt()">解密</button>
-        <button id="nip44EncryptBtn" disabled onclick="nip44Encrypt()">NIP44加密</button>
-        <button id="nip44DecryptBtn" disabled onclick="nip44Decrypt()">NIP44解密</button>
-        <button id="signBtn" disabled onclick="sign()">签名</button>
-        <button id="updateKeyBtn" disabled onclick="updateKey()">绑定Key</button>
-        <button id="removeKeyBtn" disabled onclick="removeKey()">删除Key</button>
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="getPublicKeyBtn" disabled onclick="getPublicKey()">Get Pubkey</button>
+        <button id="encryptBtn" disabled onclick="encrypt()">Encrypt</button>
+        <button id="decryptBtn" disabled onclick="decrypt()">Decrypt</button>
+        <button id="nip44EncryptBtn" disabled onclick="nip44Encrypt()">NIP44 Encrypt</button>
+        <button id="nip44DecryptBtn" disabled onclick="nip44Decrypt()">NIP44 Decrypt</button>
+        <button id="signBtn" disabled onclick="sign()">Sign</button>
+        <button id="updateKeyBtn" disabled onclick="updateKey()">Update Key</button>
+        <button id="removeKeyBtn" disabled onclick="removeKey()">Remove Key</button>
+        <button id="pingBtn" disabled onclick="ping()">Ping</button>
+        <button id="echoBtn" disabled onclick="echo()">Echo</button>
     </div>
     <div id="result"></div>
 </body>

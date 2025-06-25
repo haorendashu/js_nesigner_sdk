@@ -214,6 +214,43 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             return MsgResult.FAIL;
         }
 
+        async ping(): Promise<number | null> {
+            let data = new Uint8Array(0);
+            var beginTime = new Date().getTime();
+            const response = await this.doRequest(
+                null,
+                null,
+                MsgType.PING,
+                Nesigner.EMPTY_PUBKEY,
+                data,
+            );
+            
+            if (response &&response.result == MsgResult.OK) {
+                var endTime = new Date().getTime();
+                return endTime - beginTime;
+            }
+            
+            return null;
+        }
+
+        async echo(pinCode: string, msgContent: string): Promise<string | null> {
+            var aesKey = this.getAesKey(pinCode);
+            const response = await this.doRequest(
+                aesKey,
+                null,
+                MsgType.ECHO,
+                Nesigner.EMPTY_PUBKEY,
+                utf8Encoder.encode(msgContent),
+            );
+
+            if (response &&response.result == MsgResult.OK && response.data && response.iv) {
+                var dectypedData = await EncryptUtil.decrypt(aesKey,  response.data, response.iv);
+                return utf8Decoder.decode(dectypedData);
+            }
+            
+            return null;
+        }
+
         async close(): Promise<void> {
             if (this.port.close) {
                 await this.port.close();

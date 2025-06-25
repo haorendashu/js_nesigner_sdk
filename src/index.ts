@@ -47,7 +47,7 @@ export async function getSerialPort(): Promise<SerialPort> {
         parity: 'none',
         flowControl: 'none'
     });
-    console.log("Serial port opened:", port.getInfo());
+    // console.log("Serial port opened:", port.getInfo());
     return port;
 }
 
@@ -74,7 +74,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }) => void> = new Map();
 
         private startResponseReader() {
-            console.log('Starting response reader...');
+            // console.log('Starting response reader...');
             this.readResponse(null).catch(err => {
                 console.error('Error in response reader:', err);
             });
@@ -100,7 +100,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             );
 
             if (response && response.result === MsgResult.OK && response.data && response.iv) {
-                var dectypedData = await EncryptUtil.decrypt(this.aesKey,  response.data, response.iv);
+                var dectypedData = await EncryptUtil.decrypt(this.aesKey, response.data, response.iv);
                 this._pubkey = HexUtil.bytesToHex(dectypedData);
                 return this._pubkey;
             } else if (response && response.result === MsgResult.KEY_NOT_FOUND) {
@@ -118,7 +118,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             ]);
             var response = await this.doRequest(this.aesKey, null, msgType, this._pubkey as string, data);
             if (response && response.result === MsgResult.OK && response.data && response.iv) {
-                var dectypedData = await EncryptUtil.decrypt(this.aesKey,  response.data, response.iv);
+                var dectypedData = await EncryptUtil.decrypt(this.aesKey, response.data, response.iv);
                 return utf8Decoder.decode(dectypedData);
             }
 
@@ -144,7 +144,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         async sign(eventId: string): Promise<string | null> {
             var response = await this.doRequest(this.aesKey, null, MsgType.NOSTR_SIGN_EVENT, this._pubkey as string, HexUtil.hexToBytes(eventId));
             if (response && response.result === MsgResult.OK && response.data && response.iv) {
-                var dectypedData = await EncryptUtil.decrypt(this.aesKey,  response.data, response.iv);
+                var dectypedData = await EncryptUtil.decrypt(this.aesKey, response.data, response.iv);
                 return HexUtil.bytesToHex(dectypedData);
             }
             return null;
@@ -174,7 +174,6 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             if (!tempPubkey) {
                 return MsgResult.FAIL;
             }
-            console.log("tempPubkey:", tempPubkey);
 
             var sourceData = key + HexUtil.bytesToHex(aesKey);
             var sharedSecret = getConversationKey(privateKey, tempPubkey);
@@ -224,12 +223,12 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 Nesigner.EMPTY_PUBKEY,
                 data,
             );
-            
-            if (response &&response.result == MsgResult.OK) {
+
+            if (response && response.result == MsgResult.OK) {
                 var endTime = new Date().getTime();
                 return endTime - beginTime;
             }
-            
+
             return null;
         }
 
@@ -243,11 +242,11 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 utf8Encoder.encode(msgContent),
             );
 
-            if (response &&response.result == MsgResult.OK && response.data && response.iv) {
-                var dectypedData = await EncryptUtil.decrypt(aesKey,  response.data, response.iv);
+            if (response && response.result == MsgResult.OK && response.data && response.iv) {
+                var dectypedData = await EncryptUtil.decrypt(aesKey, response.data, response.iv);
                 return utf8Decoder.decode(dectypedData);
             }
-            
+
             return null;
         }
 
@@ -276,7 +275,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 const messageIdStr = HexUtil.bytesToHex(messageId);
                 this.messageCallbacks.set(messageIdStr, resolve);
 
-                console.log(`Sending message with ID: ${messageIdStr}, Type: ${messageType}, Pubkey: ${pubkey}`);
+                // console.log(`Sending message with ID: ${messageIdStr}, Type: ${messageType}, Pubkey: ${pubkey}`);
 
                 this.sendMessage(aesKey, messageId, iv, messageType, pubkey, data)
                     .catch(err => {
@@ -329,13 +328,13 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 messageId,
                 pubkeyBytes,
                 iv,
-                new Uint8Array(2), // Placeholder for CRC
                 lengthBytes,
                 encryptedData,
+                new Uint8Array(2), // Placeholder for CRC
             ];
 
             // Calculate total length and create final message
-            const totalLength = messageParts.reduce((sum, arr) => sum + arr.length, 0);
+            const totalLength = 72 + dataLength; // 2 + 16 + 32 + 16 + 4 + dataLength + 2
             const finalMessage = new Uint8Array(totalLength);
 
             let offset = 0;
@@ -345,13 +344,13 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             }
 
             // Calculate CRC16 (excluding CRC field itself)
-            if (encryptedData.byteLength > 0) {
-                const crc = this.calculateCRC16(
-                    encryptedData
-                );
-                finalMessage[66] = (crc >> 8) & 0xFF;
-                finalMessage[67] = crc & 0xFF;
-            }
+            const crc = this.calculateCRC16(
+                finalMessage,
+                0,
+                totalLength - 2,
+            );
+            finalMessage[totalLength - 2] = (crc >> 8) & 0xFF;
+            finalMessage[totalLength - 1] = crc & 0xFF;
 
             // Send to serial port
             const writer = this.port.writable?.getWriter();
@@ -361,7 +360,7 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
             try {
                 await writer.write(finalMessage);
-                console.log("write success");
+                // console.log("write success");
             } finally {
                 writer.releaseLock();
             }
@@ -376,7 +375,8 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
             try {
                 // Header buffer and offset
-                const headerBuffer = new Uint8Array(74);
+                const headerLength = 72;
+                const headerBuffer = new Uint8Array(headerLength);
                 let headerOffset = 0;
 
                 // If we have existing data from previous read, use it first
@@ -393,13 +393,13 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
                 // Read until we have complete header
                 while (headerOffset < headerBuffer.length) {
-                    console.log(`Reading header: ${headerOffset}/${headerBuffer.length}`);
+                    // console.log(`Reading header: ${headerOffset}/${headerBuffer.length}`);
                     const { value, done } = await reader.read();
                     if (done) {
                         throw new Error('Serial port closed while reading');
                     }
 
-                    console.log(`Read ${value.length} bytes from serial port`);
+                    // console.log(`Read ${value.length} bytes from serial port`);
 
                     const remaining = headerBuffer.length - headerOffset;
                     if (value.length <= remaining) {
@@ -418,21 +418,21 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 const result = (headerBuffer[18] << 8) | headerBuffer[19];
                 const pubkeyBytes = headerBuffer.slice(20, 52);
                 const iv = headerBuffer.slice(52, 68);
-                const crc = (headerBuffer[68] << 8) | headerBuffer[69];
-                const dataLength = (headerBuffer[70] << 24) | (headerBuffer[71] << 16) |
-                    (headerBuffer[72] << 8) | headerBuffer[73];
+                const dataLength = (headerBuffer[68] << 24) | (headerBuffer[69] << 16) |
+                    (headerBuffer[70] << 8) | headerBuffer[71];
 
-                console.log('result:', result);
-                console.log('read dataLength:', dataLength);
+                // console.log('result:', result);
+                // console.log('read dataLength:', dataLength);
 
                 // Read encrypted data
-                const encryptedData = new Uint8Array(dataLength);
+                const encryptedDataAndCrcLength = dataLength + 2;
+                const encryptedDataAndCrc = new Uint8Array(encryptedDataAndCrcLength);
                 let dataOffset = 0;
 
                 // Use existing data first if available
                 if (existingData) {
-                    const copyLength = Math.min(existingData.length, dataLength);
-                    encryptedData.set(existingData.slice(0, copyLength));
+                    const copyLength = Math.min(existingData.length, encryptedDataAndCrcLength);
+                    encryptedDataAndCrc.set(existingData.slice(0, copyLength));
                     dataOffset = copyLength;
 
                     // Save remaining data for next message
@@ -442,28 +442,33 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                 }
 
                 // Read remaining encrypted data
-                while (dataOffset < dataLength) {
+                while (dataOffset < encryptedDataAndCrcLength) {
                     const { value, done } = await reader.read();
                     if (done) {
                         throw new Error('Serial port closed while reading data');
                     }
 
-                    const remaining = dataLength - dataOffset;
+                    const remaining = encryptedDataAndCrcLength - dataOffset;
                     if (value.length <= remaining) {
-                        encryptedData.set(value, dataOffset);
+                        encryptedDataAndCrc.set(value, dataOffset);
                         dataOffset += value.length;
                     } else {
-                        encryptedData.set(value.slice(0, remaining), dataOffset);
+                        encryptedDataAndCrc.set(value.slice(0, remaining), dataOffset);
                         existingData = value.slice(remaining);
                         dataOffset += remaining;
                         break;
                     }
                 }
 
+                const encryptedData = encryptedDataAndCrc.slice(0, dataLength);
+                const crc = (encryptedDataAndCrc[encryptedDataAndCrcLength - 2] << 8) | encryptedDataAndCrc[encryptedDataAndCrcLength - 1];
                 if (dataLength > 0) {
                     // Verify CRC
-                    const crcData = encryptedData;
-                    const calculatedCrc = this.calculateCRC16(crcData);
+                    const fullCrcLength = headerLength + dataLength;
+                    const crcData = new Uint8Array(fullCrcLength);
+                    crcData.set(headerBuffer, 0);
+                    crcData.set(encryptedData, headerLength);
+                    const calculatedCrc = this.calculateCRC16(crcData, 0, fullCrcLength);
                     if (calculatedCrc !== crc) {
                         throw new Error('CRC verification failed');
                     }
@@ -499,9 +504,9 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             }
         }
 
-        private calculateCRC16(data: Uint8Array): number {
+        private calculateCRC16(data: Uint8Array, offset: number, length: number): number {
             let crc = 0xFFFF;
-            for (let i = 0; i < data.length; i++) {
+            for (let i = offset; i < length; i++) {
                 crc ^= data[i] << 8;
                 for (let j = 0; j < 8; j++) {
                     // 修改这里的逻辑以匹配 C++ 实现

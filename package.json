@@ -1,7 +1,7 @@
 {
   "name": "js_nesigner_sdk",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "A JavaScript SDK for the nesigner.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

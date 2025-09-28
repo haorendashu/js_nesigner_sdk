@@ -1,12 +1,22 @@
 /// <reference lib="dom" />
 
-import { NesignerInterface } from './nesigner_interface';
+// import { NesignerInterface } from './nesigner_interface';
 import { HexUtil } from './hex_util';
 import { EncryptUtil } from './encrypt_util';
 import { getConversationKey, encrypt as nip44Encrypt, utf8Decoder, utf8Encoder } from './nip44';
 import { schnorr } from '@noble/curves/secp256k1';
 import { randomBytes } from '@noble/hashes/utils';
 import { Md5 } from 'ts-md5';
+
+export interface NesignerInterface {
+    getPublicKey(): Promise<string | null>;
+    encrypt(pubkey: string, plaintext: string): Promise<string | null>;
+    decrypt(pubkey: string, ciphertext: string): Promise<string | null>;
+    nip44Encrypt(pubkey: string, plaintext: string): Promise<string | null>;
+    nip44Decrypt(pubkey: string, ciphertext: string): Promise<string | null>;
+    sign(eventId: string): Promise<string | null>;
+    close(): Promise<void>;
+}
 
 export enum MsgType {
     NOSTR_GET_PUBLIC_KEY = 1,

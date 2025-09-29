@@ -66,6 +66,8 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         private _pubkey?: string;
         private port: SerialPort;
         private aesKey: Uint8Array;
+        private writeQueue: Array<() => Promise<void>> = [];
+        private isWriting = false;
 
         private static readonly EMPTY_PUBKEY = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -362,17 +364,54 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
             finalMessage[totalLength - 2] = (crc >> 8) & 0xFF;
             finalMessage[totalLength - 1] = crc & 0xFF;
 
-            // Send to serial port
-            const writer = this.port.writable?.getWriter();
-            if (!writer) {
-                throw new Error('Serial port is not writable');
+            // Send to serial port using queue
+            return new Promise((resolve, reject) => {
+                const writeTask = async () => {
+                    // Send to serial port
+                    const writer = this.port.writable?.getWriter();
+                    if (!writer) {
+                        reject(new Error('Serial port is not writable'));
+                        return;
+                    }
+
+                    try {
+                        await writer.write(finalMessage);
+                        // console.log("write success");
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    } finally {
+                        writer.releaseLock();
+                        this.processWriteQueue();
+                    }
+                };
+
+                this.writeQueue.push(writeTask);
+                this.processWriteQueue();
+            });
+        }
+
+        private async processWriteQueue(): Promise<void> {
+            if (this.isWriting || this.writeQueue.length === 0) {
+                return;
             }
 
-            try {
-                await writer.write(finalMessage);
-                // console.log("write success");
-            } finally {
-                writer.releaseLock();
+            // console.log("processWriteQueue", this.writeQueue.length);
+
+            this.isWriting = true;
+            const task = this.writeQueue.shift();
+
+            if (task) {
+                try {
+                    await task();
+                } catch (error) {
+                    console.error('Write task failed:', error);
+                } finally {
+                    this.isWriting = false;
+                    this.processWriteQueue();
+                }
+            } else {
+                this.isWriting = false;
             }
         }
 

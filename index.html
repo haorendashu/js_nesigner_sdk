@@ -117,8 +117,24 @@
             }
         }
 
+        window.batchTest = async function () {
+            try {
+                for (var i = 0; i < 100; i++) {
+                    window.getPublicKey();
+                    window.sign();
+                    window.ping();
+                    window.echo();
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                showResult('Batch test done.');
+            } catch (error) {
+                showResult('Batch test fail: ' + error.message);
+            }
+        }
+
         function showResult(message) {
-            document.getElementById('result').innerHTML = message;
+            var innerHTML = document.getElementById('result').innerHTML;
+            document.getElementById('result').innerHTML = innerHTML + "<br>" + message;
         }
 
         window.publicKey = "";
@@ -143,6 +159,7 @@
         <button id="removeKeyBtn" disabled onclick="removeKey()">Remove Key</button>
         <button id="pingBtn" disabled onclick="ping()">Ping</button>
         <button id="echoBtn" disabled onclick="echo()">Echo</button>
+        <!-- <button id="batchTestBtn" onclick="batchTest()">batchTest</button> -->
     </div>
     <div id="result"></div>
 </body>

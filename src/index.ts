@@ -7,6 +7,7 @@ import { getConversationKey, encrypt as nip44Encrypt, utf8Decoder, utf8Encoder }
 import { schnorr } from '@noble/curves/secp256k1';
 import { randomBytes } from '@noble/hashes/utils';
 import { Md5 } from 'ts-md5';
+import { bech32 } from '@scure/base';
 
 export interface NesignerInterface {
     getPublicKey(): Promise<string | null>;
@@ -185,15 +186,37 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
 
         async updateKey(pinCode: string, key: string): Promise<number> {
             var aesKey = this.getAesKey(pinCode);
-            var privateKey = HexUtil.hexToBytes(key);
-            var currentPubkey = this.getPublicKeyFromKey(privateKey);
+
+            // Check if the key is in nsec1 format (nostr bech32 encoded private key)
+            let privateKeyBytes: Uint8Array;
+            if (key.startsWith('nsec1')) {
+                // Decode the nsec1 format key to get the hex representation
+                try {
+                    const result: any = bech32.decode(key as any, 1000); // 1000 is the max length limit
+                    const { prefix, words } = result;
+                    if (prefix !== 'nsec') {
+                        console.error('Invalid prefix for nsec key:', prefix);
+                        return MsgResult.FAIL;
+                    }
+                    const data = bech32.fromWords(words);
+                    privateKeyBytes = new Uint8Array(data);
+                } catch (error) {
+                    console.error('Invalid nsec format key:', error);
+                    return MsgResult.FAIL;
+                }
+            } else {
+                // Assume it's already in hex format
+                privateKeyBytes = HexUtil.hexToBytes(key);
+            }
+
+            var currentPubkey = this.getPublicKeyFromKey(privateKeyBytes);
             var tempPubkey = await this.getTempPubkey();
             if (!tempPubkey) {
                 return MsgResult.FAIL;
             }
 
-            var sourceData = key + HexUtil.bytesToHex(aesKey);
-            var sharedSecret = getConversationKey(privateKey, tempPubkey);
+            var sourceData = HexUtil.bytesToHex(privateKeyBytes) + HexUtil.bytesToHex(aesKey);
+            var sharedSecret = getConversationKey(privateKeyBytes, tempPubkey);
             var encryptedText = await nip44Encrypt(sourceData, sharedSecret);
 
             const response = await this.doRequest(

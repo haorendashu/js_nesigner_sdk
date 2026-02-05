@@ -72,6 +72,9 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         private _pubkey?: string;
         private port: SerialPort;
         private aesKey: Uint8Array;
+        private responseReader?: ReadableStreamDefaultReader<Uint8Array> | null = null;
+        private needClose: boolean = false;
+        private closePromise?: Promise<void> | null = null;
         private writeQueue: Array<() => Promise<void>> = [];
         private isWriting = false;
 
@@ -291,9 +294,41 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }
 
         async close(): Promise<void> {
-            if (this.port.close) {
-                await this.port.close();
+            if (this.closePromise) {
+                return this.closePromise;
             }
+
+            this.needClose = true;
+
+            this.closePromise = (async () => {
+                if (this.responseReader) {
+                    try {
+                        await this.responseReader.cancel();
+                    } catch (e) {
+                        // ignore
+                    }
+
+                    try {
+                        this.responseReader.releaseLock();
+                    } catch (e) {
+                        // ignore
+                    }
+
+                    this.responseReader = null;
+                }
+
+                if (this.port.close) {
+                    try {
+                        await this.port.close();
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+
+                this.closePromise = null;
+            })();
+
+            return this.closePromise;
         }
 
         private async doRequest(
@@ -444,7 +479,8 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
         }
 
         private async readResponse(existingData: Uint8Array | null): Promise<void> {
-            const reader = this.port.readable?.getReader();
+            this.responseReader = this.port.readable?.getReader() ?? null;
+            const reader = this.responseReader;
             if (!reader) {
                 console.error('Serial port is not readable');
                 throw new Error('Serial port is not readable');
@@ -569,14 +605,44 @@ export async function createNesigner(port: SerialPort, pinCode: string): Promise
                     });
                 }
 
-                // Continue reading next message
+                // If a close was requested, release lock and close port instead of continuing.
                 reader.releaseLock();
+                this.responseReader = null;
+
+                if (this.needClose) {
+                    try {
+                        if (this.port.close) await this.port.close();
+                    } catch (e) {
+                        // ignore
+                    }
+                    return;
+                }
+
+                // Continue reading next message
                 this.readResponse(existingData).catch(err => {
                     console.error('Error in response reader:', err);
                 });
 
             } catch (error) {
-                reader.releaseLock();
+                try {
+                    reader.releaseLock();
+                } catch (e) {
+                    // ignore
+                }
+                this.responseReader = null;
+
+                // If close() was requested, swallow errors caused by closing.
+                if (this.needClose) {
+                    return;
+                }
+
+                // If not closing, attempt to close port and rethrow error.
+                try {
+                    if (this.port.close) await this.port.close();
+                } catch (e) {
+                    // ignore
+                }
+
                 throw error;
             }
         }
